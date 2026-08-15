@@ -13,6 +13,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- PDF Modification Library for Auto-Stamping on Uploaded PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
@@ -350,7 +352,6 @@
       
       expenses.forEach(item => {
         if (item.voucher_id && typeof item.voucher_id === 'string') {
-          // Extracts the trailing number from DCCDM-YYYY-XXXX
           const match = item.voucher_id.match(/DCCDM-\d{4}-(\d+)/i);
           if (match) {
             const num = parseInt(match[1], 10);
@@ -610,87 +611,158 @@
       }
     }
 
-    // High-Resolution Auto-Stamp for Uploaded Bill Photos
-    async function stampVoucherIdOnImage(file, voucherId, expenseDate) {
-      return new Promise((resolve) => {
-        if (!file || !file.type.startsWith('image/')) {
-          resolve(file); 
-          return;
-        }
+    // Universal Stamping Function (Handles BOTH Images and PDF Files)
+    async function stampVoucherIdOnFile(file, voucherId, expenseDate) {
+      if (!file) return file;
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
+      // 1. Handle Image Files (Canvas Stamping)
+      if (file.type.startsWith('image/')) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
 
-            // Draw original photo
-            ctx.drawImage(img, 0, 0);
+              ctx.drawImage(img, 0, 0);
 
-            // Responsive dimensions based on original photo resolution
-            const scale = Math.max(img.width, img.height);
-            const fontSize = Math.max(22, Math.floor(scale * 0.024));
-            const subFontSize = Math.max(16, Math.floor(fontSize * 0.7));
-            const padding = Math.max(14, Math.floor(fontSize * 0.6));
+              const scale = Math.max(img.width, img.height);
+              const fontSize = Math.max(22, Math.floor(scale * 0.024));
+              const subFontSize = Math.max(16, Math.floor(fontSize * 0.7));
+              const padding = Math.max(14, Math.floor(fontSize * 0.6));
 
-            ctx.font = `bold ${fontSize}px sans-serif`;
-            const textLine1 = "DAKSHIN CHANDPUR CHILD DEV MISSION";
-            const textLine2 = `OFFICIAL VOUCHER: ${voucherId}`;
-            const textLine3 = `DATE: ${expenseDate}`;
+              ctx.font = `bold ${fontSize}px sans-serif`;
+              const textLine1 = "DAKSHIN CHANDPUR CHILD DEV MISSION";
+              const textLine2 = `OFFICIAL VOUCHER: ${voucherId}`;
+              const textLine3 = `DATE: ${expenseDate}`;
 
-            const w1 = ctx.measureText(textLine1).width;
-            const w2 = ctx.measureText(textLine2).width;
-            ctx.font = `bold ${subFontSize}px sans-serif`;
-            const w3 = ctx.measureText(textLine3).width;
+              const w1 = ctx.measureText(textLine1).width;
+              const w2 = ctx.measureText(textLine2).width;
+              ctx.font = `bold ${subFontSize}px sans-serif`;
+              const w3 = ctx.measureText(textLine3).width;
 
-            const boxWidth = Math.max(w1, w2, w3) + (padding * 2);
-            const boxHeight = (fontSize * 2.2) + subFontSize + (padding * 2.2);
+              const boxWidth = Math.max(w1, w2, w3) + (padding * 2);
+              const boxHeight = (fontSize * 2.2) + subFontSize + (padding * 2.2);
 
-            const boxX = Math.max(15, canvas.width - boxWidth - 25);
-            const boxY = 25;
+              const boxX = Math.max(15, canvas.width - boxWidth - 25);
+              const boxY = 25;
 
-            // Draw Solid Black Overlay Box
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
-            ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
+              ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
 
-            // Draw Crisp Neon Green Border
-            ctx.strokeStyle = '#00ff66';
-            ctx.lineWidth = Math.max(3, Math.floor(fontSize * 0.12));
-            ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+              ctx.strokeStyle = '#00ff66';
+              ctx.lineWidth = Math.max(3, Math.floor(fontSize * 0.12));
+              ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
-            // Text 1: Organization
-            ctx.font = `bold ${subFontSize}px sans-serif`;
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(textLine1, boxX + padding, boxY + padding + subFontSize * 0.9);
+              ctx.font = `bold ${subFontSize}px sans-serif`;
+              ctx.fillStyle = '#ffffff';
+              ctx.fillText(textLine1, boxX + padding, boxY + padding + subFontSize * 0.9);
 
-            // Text 2: EXACT Voucher ID
-            ctx.font = `bold ${fontSize}px sans-serif`;
-            ctx.fillStyle = '#00ff66';
-            ctx.fillText(textLine2, boxX + padding, boxY + padding + subFontSize + (fontSize * 1.05));
+              ctx.font = `bold ${fontSize}px sans-serif`;
+              ctx.fillStyle = '#00ff66';
+              ctx.fillText(textLine2, boxX + padding, boxY + padding + subFontSize + (fontSize * 1.05));
 
-            // Text 3: Expense Date
-            ctx.font = `bold ${subFontSize}px sans-serif`;
-            ctx.fillStyle = '#facc15'; // Amber date text
-            ctx.fillText(textLine3, boxX + padding, boxY + padding + subFontSize + (fontSize * 1.1) + (subFontSize * 1.1));
+              ctx.font = `bold ${subFontSize}px sans-serif`;
+              ctx.fillStyle = '#facc15';
+              ctx.fillText(textLine3, boxX + padding, boxY + padding + subFontSize + (fontSize * 1.1) + (subFontSize * 1.1));
 
-            canvas.toBlob((blob) => {
-              if (blob) {
-                const stampedFile = new File([blob], `Voucher_${voucherId}.jpg`, { type: 'image/jpeg' });
-                resolve(stampedFile);
-              } else {
-                resolve(file);
-              }
-            }, 'image/jpeg', 0.94);
+              canvas.toBlob((blob) => {
+                if (blob) {
+                  const stampedFile = new File([blob], `Voucher_${voucherId}.jpg`, { type: 'image/jpeg' });
+                  resolve(stampedFile);
+                } else {
+                  resolve(file);
+                }
+              }, 'image/jpeg', 0.94);
+            };
+            img.onerror = () => resolve(file);
+            img.src = e.target.result;
           };
-          img.onerror = () => resolve(file);
-          img.src = e.target.result;
-        };
-        reader.onerror = () => resolve(file);
-        reader.readAsDataURL(file);
-      });
+          reader.onerror = () => resolve(file);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      // 2. Handle PDF Files (pdf-lib Stamping on Page 1)
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const { PDFDocument, rgb, StandardFonts } = window.PDFLib;
+          const pdfDoc = await PDFDocument.load(arrayBuffer);
+          const pages = pdfDoc.getPages();
+          
+          if (pages.length > 0) {
+            const firstPage = pages[0];
+            const { width, height } = firstPage.getSize();
+            const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+            const fontSize = 10;
+            const subFontSize = 8;
+            const padding = 6;
+            
+            const line1 = "DAKSHIN CHANDPUR CHILD DEV MISSION";
+            const line2 = `OFFICIAL VOUCHER: ${voucherId}`;
+            const line3 = `DATE: ${expenseDate}`;
+
+            const w1 = fontBold.widthOfTextAtSize(line1, subFontSize);
+            const w2 = fontBold.widthOfTextAtSize(line2, fontSize);
+            const w3 = fontBold.widthOfTextAtSize(line3, subFontSize);
+            const boxWidth = Math.max(w1, w2, w3) + (padding * 2);
+            const boxHeight = 44;
+
+            const boxX = Math.max(10, width - boxWidth - 15);
+            const boxY = height - boxHeight - 15;
+
+            // Draw Background Box
+            firstPage.drawRectangle({
+              x: boxX,
+              y: boxY,
+              width: boxWidth,
+              height: boxHeight,
+              color: rgb(0, 0, 0),
+              borderColor: rgb(0, 1, 0.4), // Neon green border
+              borderWidth: 1.5,
+              opacity: 0.95,
+            });
+
+            // Draw Text Lines
+            firstPage.drawText(line1, {
+              x: boxX + padding,
+              y: boxY + boxHeight - padding - subFontSize,
+              size: subFontSize,
+              font: fontBold,
+              color: rgb(1, 1, 1),
+            });
+
+            firstPage.drawText(line2, {
+              x: boxX + padding,
+              y: boxY + boxHeight - padding - subFontSize - fontSize - 2,
+              size: fontSize,
+              font: fontBold,
+              color: rgb(0, 1, 0.4), // Neon green
+            });
+
+            firstPage.drawText(line3, {
+              x: boxX + padding,
+              y: boxY + padding + 2,
+              size: subFontSize,
+              font: fontBold,
+              color: rgb(1, 0.85, 0.2), // Yellow/Amber
+            });
+          }
+
+          const pdfBytes = await pdfDoc.save();
+          return new File([pdfBytes], `Voucher_${voucherId}.pdf`, { type: 'application/pdf' });
+        } catch (pdfErr) {
+          console.error("PDF Stamping Error:", pdfErr);
+          return file;
+        }
+      }
+
+      return file;
     }
 
     async function saveExpense(e) {
@@ -704,18 +776,18 @@
 
       let attachment_url = null;
       const saveBtn = document.getElementById('saveVoucherBtn');
-      saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+      saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing & Saving...';
       saveBtn.disabled = true;
 
       // 1. Calculate Single Exact Matching Voucher ID
       const voucher_id = calculateNextVoucherId();
 
-      // 2. Upload and Stamp File
+      // 2. Upload and Stamp File (Handles BOTH Images & PDFs)
       if (fileInput.files.length > 0 && _supabase) {
         try {
           let file = fileInput.files[0];
-          // Auto-stamp exact Voucher ID on the bill image
-          file = await stampVoucherIdOnImage(file, voucher_id, expense_date);
+          // Auto-stamp exact Voucher ID on the bill (Image or PDF)
+          file = await stampVoucherIdOnFile(file, voucher_id, expense_date);
 
           const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
           const fileName = `${Date.now()}_${cleanName}`;
@@ -854,7 +926,6 @@
       document.getElementById('totalAmountCell').innerText = '₹ ' + total.toFixed(2);
     }
 
-    // Export Single Voucher: Only Authorized Approval (Receiver Signature Removed)
     function exportSinglePDF(voucherId) {
       const item = expenses.find(e => e.voucher_id === voucherId);
       if (!item) return;
@@ -915,7 +986,6 @@
       doc.setTextColor(31, 41, 55);
       doc.text(`Verified & System Entered By: ${entryUser} (${entryEmail})`, 19, finalY + 11);
 
-      // Single Line Signature: Only Authorized Approval
       const sigY = finalY + 35;
       doc.setDrawColor(156, 163, 175);
       doc.line(135, sigY, 195, sigY);
