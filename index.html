@@ -328,7 +328,6 @@
     let userProfile = null;
     let expenses = [];
     let logoDataUrl = null;
-    let currentPreparedVoucherId = '';
 
     const today = new Date();
     document.getElementById('expenseDate').value = today.toISOString().split('T')[0];
@@ -344,25 +343,32 @@
       yearPicker.innerHTML += `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`;
     }
 
-    function generateUniqueVoucherId() {
+    // Precise Sequential Voucher ID Calculator
+    function calculateNextVoucherId() {
       const year = new Date().getFullYear();
-      let maxNum = 0;
-      expenses.forEach(e => {
-        if (e.voucher_id && e.voucher_id.startsWith(`DCCDM-${year}-`)) {
-          const part = e.voucher_id.replace(`DCCDM-${year}-`, '');
-          const num = parseInt(part, 10);
-          if (!isNaN(num) && num > maxNum) {
-            maxNum = num;
+      let maxSerial = 0;
+      
+      expenses.forEach(item => {
+        if (item.voucher_id && typeof item.voucher_id === 'string') {
+          // Extracts the trailing number from DCCDM-YYYY-XXXX
+          const match = item.voucher_id.match(/DCCDM-\d{4}-(\d+)/i);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxSerial) {
+              maxSerial = num;
+            }
           }
         }
       });
-      const nextNum = maxNum + 1;
+      
+      const nextNum = maxSerial + 1;
       return `DCCDM-${year}-${String(nextNum).padStart(4, '0')}`;
     }
 
     function updateNextVoucherBadge() {
-      currentPreparedVoucherId = generateUniqueVoucherId();
-      document.getElementById('nextVoucherIdBadge').innerText = currentPreparedVoucherId;
+      const nextId = calculateNextVoucherId();
+      document.getElementById('nextVoucherIdBadge').innerText = nextId;
+      return nextId;
     }
 
     function selectLoginRole(role) {
@@ -604,10 +610,10 @@
       }
     }
 
-    // Auto-Stamp EXACT Voucher ID on Uploaded Image File with High-Contrast Box
-    async function stampVoucherIdOnImage(file, voucherId) {
+    // High-Resolution Auto-Stamp for Uploaded Bill Photos
+    async function stampVoucherIdOnImage(file, voucherId, expenseDate) {
       return new Promise((resolve) => {
-        if (!file.type.startsWith('image/')) {
+        if (!file || !file.type.startsWith('image/')) {
           resolve(file); 
           return;
         }
@@ -621,49 +627,68 @@
             canvas.height = img.height;
             const ctx = canvas.getContext('2d');
 
+            // Draw original photo
             ctx.drawImage(img, 0, 0);
 
-            // Calculate Responsive Font and Badge Size
-            const fontSize = Math.max(20, Math.floor(img.width * 0.028));
+            // Responsive dimensions based on original photo resolution
+            const scale = Math.max(img.width, img.height);
+            const fontSize = Math.max(22, Math.floor(scale * 0.024));
+            const subFontSize = Math.max(16, Math.floor(fontSize * 0.7));
+            const padding = Math.max(14, Math.floor(fontSize * 0.6));
+
             ctx.font = `bold ${fontSize}px sans-serif`;
-            
-            const line1 = "DAKSHIN CHANDPUR CHILD DEVELOPMENT MISSION";
-            const line2 = `OFFICIAL VOUCHER ID: ${voucherId}`;
-            
-            const textWidth1 = ctx.measureText(line1).width;
-            const textWidth2 = ctx.measureText(line2).width;
-            const maxWidth = Math.max(textWidth1, textWidth2);
-            
-            const padding = Math.max(14, Math.floor(img.width * 0.015));
-            const boxWidth = maxWidth + (padding * 2);
-            const boxHeight = (fontSize * 2.6) + (padding * 2);
-            
-            const boxX = canvas.width - boxWidth - 25;
+            const textLine1 = "DAKSHIN CHANDPUR CHILD DEV MISSION";
+            const textLine2 = `OFFICIAL VOUCHER: ${voucherId}`;
+            const textLine3 = `DATE: ${expenseDate}`;
+
+            const w1 = ctx.measureText(textLine1).width;
+            const w2 = ctx.measureText(textLine2).width;
+            ctx.font = `bold ${subFontSize}px sans-serif`;
+            const w3 = ctx.measureText(textLine3).width;
+
+            const boxWidth = Math.max(w1, w2, w3) + (padding * 2);
+            const boxHeight = (fontSize * 2.2) + subFontSize + (padding * 2.2);
+
+            const boxX = Math.max(15, canvas.width - boxWidth - 25);
             const boxY = 25;
 
-            // Draw Background Box
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.90)';
+            // Draw Solid Black Overlay Box
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
             ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-            
-            // Draw Neon Border
+
+            // Draw Crisp Neon Green Border
             ctx.strokeStyle = '#00ff66';
             ctx.lineWidth = Math.max(3, Math.floor(fontSize * 0.12));
             ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
-            // Write Texts
+            // Text 1: Organization
+            ctx.font = `bold ${subFontSize}px sans-serif`;
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(line1, boxX + padding, boxY + padding + fontSize * 0.85);
-            
+            ctx.fillText(textLine1, boxX + padding, boxY + padding + subFontSize * 0.9);
+
+            // Text 2: EXACT Voucher ID
+            ctx.font = `bold ${fontSize}px sans-serif`;
             ctx.fillStyle = '#00ff66';
-            ctx.fillText(line2, boxX + padding, boxY + padding + fontSize * 2.1);
+            ctx.fillText(textLine2, boxX + padding, boxY + padding + subFontSize + (fontSize * 1.05));
+
+            // Text 3: Expense Date
+            ctx.font = `bold ${subFontSize}px sans-serif`;
+            ctx.fillStyle = '#facc15'; // Amber date text
+            ctx.fillText(textLine3, boxX + padding, boxY + padding + subFontSize + (fontSize * 1.1) + (subFontSize * 1.1));
 
             canvas.toBlob((blob) => {
-              const stampedFile = new File([blob], `Voucher_${voucherId}_${file.name}`, { type: 'image/jpeg' });
-              resolve(stampedFile);
-            }, 'image/jpeg', 0.92);
+              if (blob) {
+                const stampedFile = new File([blob], `Voucher_${voucherId}.jpg`, { type: 'image/jpeg' });
+                resolve(stampedFile);
+              } else {
+                resolve(file);
+              }
+            }, 'image/jpeg', 0.94);
           };
+          img.onerror = () => resolve(file);
           img.src = e.target.result;
         };
+        reader.onerror = () => resolve(file);
         reader.readAsDataURL(file);
       });
     }
@@ -678,19 +703,21 @@
       const fileInput = document.getElementById('attachmentFile');
 
       let attachment_url = null;
-      document.getElementById('saveVoucherBtn').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
-      document.getElementById('saveVoucherBtn').disabled = true;
+      const saveBtn = document.getElementById('saveVoucherBtn');
+      saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+      saveBtn.disabled = true;
 
-      // Use the EXACT Prepared Voucher ID shown in UI badge
-      const voucher_id = currentPreparedVoucherId || generateUniqueVoucherId();
+      // 1. Calculate Single Exact Matching Voucher ID
+      const voucher_id = calculateNextVoucherId();
 
+      // 2. Upload and Stamp File
       if (fileInput.files.length > 0 && _supabase) {
         try {
           let file = fileInput.files[0];
-          // Stamp the exact same voucher_id on image
-          file = await stampVoucherIdOnImage(file, voucher_id);
+          // Auto-stamp exact Voucher ID on the bill image
+          file = await stampVoucherIdOnImage(file, voucher_id, expense_date);
 
-          const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, "_");
+          const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
           const fileName = `${Date.now()}_${cleanName}`;
           
           const { error: uploadErr } = await _supabase.storage.from('vouchers').upload(fileName, file);
@@ -699,19 +726,27 @@
             attachment_url = urlData.publicUrl;
           }
         } catch(err) {
-          console.log("File Upload bypassed:", err);
+          console.error("File upload error bypassed:", err);
         }
       }
 
+      // 3. Insert Record with Exact Same Voucher ID
       if (_supabase && currentUser) {
         const { error } = await _supabase.from('expenses').insert([{
-          voucher_id, expense_date, amount, category, spent_by, paid_to, attachment_url, created_by: currentUser.id
+          voucher_id,
+          expense_date,
+          amount,
+          category,
+          spent_by,
+          paid_to,
+          attachment_url,
+          created_by: currentUser.id
         }]);
 
         if (error) {
           alert("Error saving record: " + error.message);
-          document.getElementById('saveVoucherBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Expense Voucher';
-          document.getElementById('saveVoucherBtn').disabled = false;
+          saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Expense Voucher';
+          saveBtn.disabled = false;
           return;
         }
       }
@@ -720,8 +755,8 @@
       document.getElementById('expenseForm').reset();
       document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
       document.getElementById('expenseDateDisplay').innerText = new Date().toISOString().split('T')[0];
-      document.getElementById('saveVoucherBtn').innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Expense Voucher';
-      document.getElementById('saveVoucherBtn').disabled = false;
+      saveBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Expense Voucher';
+      saveBtn.disabled = false;
       
       await loadExpensesFromSupabase();
       renderTable();
@@ -819,7 +854,7 @@
       document.getElementById('totalAmountCell').innerText = '₹ ' + total.toFixed(2);
     }
 
-    // Export Single Voucher: Only Authorized Approval (Receiver Signature Completely Removed)
+    // Export Single Voucher: Only Authorized Approval (Receiver Signature Removed)
     function exportSinglePDF(voucherId) {
       const item = expenses.find(e => e.voucher_id === voucherId);
       if (!item) return;
