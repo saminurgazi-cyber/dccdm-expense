@@ -328,6 +328,7 @@
     let userProfile = null;
     let expenses = [];
     let logoDataUrl = null;
+    let currentPreparedVoucherId = '';
 
     const today = new Date();
     document.getElementById('expenseDate').value = today.toISOString().split('T')[0];
@@ -341,6 +342,27 @@
     yearPicker.innerHTML = `<option value="ALL">All Years</option>`;
     for (let y = currentYear; y >= currentYear - 5; y--) {
       yearPicker.innerHTML += `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`;
+    }
+
+    function generateUniqueVoucherId() {
+      const year = new Date().getFullYear();
+      let maxNum = 0;
+      expenses.forEach(e => {
+        if (e.voucher_id && e.voucher_id.startsWith(`DCCDM-${year}-`)) {
+          const part = e.voucher_id.replace(`DCCDM-${year}-`, '');
+          const num = parseInt(part, 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        }
+      });
+      const nextNum = maxNum + 1;
+      return `DCCDM-${year}-${String(nextNum).padStart(4, '0')}`;
+    }
+
+    function updateNextVoucherBadge() {
+      currentPreparedVoucherId = generateUniqueVoucherId();
+      document.getElementById('nextVoucherIdBadge').innerText = currentPreparedVoucherId;
     }
 
     function selectLoginRole(role) {
@@ -567,7 +589,6 @@
       }
     }
 
-    // 100% Guaranteed Logout Function (Clears storage, session, and forces reload)
     async function logout() {
       try {
         if (_supabase) await _supabase.auth.signOut();
@@ -583,13 +604,7 @@
       }
     }
 
-    function updateNextVoucherBadge() {
-      const year = new Date().getFullYear();
-      const count = expenses.length + 1;
-      document.getElementById('nextVoucherIdBadge').innerText = `DCCDM-${year}-${String(count).padStart(4, '0')}`;
-    }
-
-    // Auto-Stamp Voucher ID on Uploaded Image File
+    // Auto-Stamp EXACT Voucher ID on Uploaded Image File with High-Contrast Box
     async function stampVoucherIdOnImage(file, voucherId) {
       return new Promise((resolve) => {
         if (!file.type.startsWith('image/')) {
@@ -608,26 +623,42 @@
 
             ctx.drawImage(img, 0, 0);
 
-            const text = `DCCDM OFFICIAL | VOUCHER: ${voucherId}`;
-            ctx.font = 'bold ' + Math.max(16, Math.floor(img.width * 0.025)) + 'px sans-serif';
-            const textWidth = ctx.measureText(text).width;
-            const padding = 12;
-            const rectX = canvas.width - textWidth - (padding * 2) - 20;
-            const rectY = 20;
-            const rectWidth = textWidth + (padding * 2);
-            const rectHeight = Math.max(28, Math.floor(img.width * 0.04));
+            // Calculate Responsive Font and Badge Size
+            const fontSize = Math.max(20, Math.floor(img.width * 0.028));
+            ctx.font = `bold ${fontSize}px sans-serif`;
+            
+            const line1 = "DAKSHIN CHANDPUR CHILD DEVELOPMENT MISSION";
+            const line2 = `OFFICIAL VOUCHER ID: ${voucherId}`;
+            
+            const textWidth1 = ctx.measureText(line1).width;
+            const textWidth2 = ctx.measureText(line2).width;
+            const maxWidth = Math.max(textWidth1, textWidth2);
+            
+            const padding = Math.max(14, Math.floor(img.width * 0.015));
+            const boxWidth = maxWidth + (padding * 2);
+            const boxHeight = (fontSize * 2.6) + (padding * 2);
+            
+            const boxX = canvas.width - boxWidth - 25;
+            const boxY = 25;
 
-            ctx.fillStyle = 'rgba(5, 5, 5, 0.85)';
-            ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
+            // Draw Background Box
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.90)';
+            ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+            
+            // Draw Neon Border
             ctx.strokeStyle = '#00ff66';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
+            ctx.lineWidth = Math.max(3, Math.floor(fontSize * 0.12));
+            ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
+            // Write Texts
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(line1, boxX + padding, boxY + padding + fontSize * 0.85);
+            
             ctx.fillStyle = '#00ff66';
-            ctx.fillText(text, rectX + padding, rectY + rectHeight - (padding / 2) - 2);
+            ctx.fillText(line2, boxX + padding, boxY + padding + fontSize * 2.1);
 
             canvas.toBlob((blob) => {
-              const stampedFile = new File([blob], `stamped_${file.name}`, { type: 'image/jpeg' });
+              const stampedFile = new File([blob], `Voucher_${voucherId}_${file.name}`, { type: 'image/jpeg' });
               resolve(stampedFile);
             }, 'image/jpeg', 0.92);
           };
@@ -650,18 +681,17 @@
       document.getElementById('saveVoucherBtn').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
       document.getElementById('saveVoucherBtn').disabled = true;
 
-      const year = new Date().getFullYear();
-      const random4Digit = Math.floor(1000 + Math.random() * 9000);
-      const voucher_id = `DCCDM-${year}-${random4Digit}`;
+      // Use the EXACT Prepared Voucher ID shown in UI badge
+      const voucher_id = currentPreparedVoucherId || generateUniqueVoucherId();
 
       if (fileInput.files.length > 0 && _supabase) {
         try {
           let file = fileInput.files[0];
-          // Auto-stamp Voucher ID on receipt image before uploading
+          // Stamp the exact same voucher_id on image
           file = await stampVoucherIdOnImage(file, voucher_id);
 
           const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, "_");
-          const fileName = `${Date.now()}_${voucher_id}_${cleanName}`;
+          const fileName = `${Date.now()}_${cleanName}`;
           
           const { error: uploadErr } = await _supabase.storage.from('vouchers').upload(fileName, file);
           if (!uploadErr) {
@@ -669,7 +699,7 @@
             attachment_url = urlData.publicUrl;
           }
         } catch(err) {
-          console.log("File Upload Error bypassed:", err);
+          console.log("File Upload bypassed:", err);
         }
       }
 
@@ -686,7 +716,7 @@
         }
       }
 
-      alert('Voucher Saved Successfully!');
+      alert(`Voucher ${voucher_id} Saved Successfully!`);
       document.getElementById('expenseForm').reset();
       document.getElementById('expenseDate').value = new Date().toISOString().split('T')[0];
       document.getElementById('expenseDateDisplay').innerText = new Date().toISOString().split('T')[0];
@@ -698,7 +728,6 @@
       updateNextVoucherBadge();
     }
 
-    // Delete Voucher Function: Accessible ONLY for Admins
     async function deleteExpense(id, voucherId) {
       if (userProfile?.role !== 'admin') {
         alert("Permission Denied! Only Administrators can delete vouchers.");
@@ -790,7 +819,7 @@
       document.getElementById('totalAmountCell').innerText = '₹ ' + total.toFixed(2);
     }
 
-    // Export Single Voucher: Only Authorized Approval (Receiver Signature Removed)
+    // Export Single Voucher: Only Authorized Approval (Receiver Signature Completely Removed)
     function exportSinglePDF(voucherId) {
       const item = expenses.find(e => e.voucher_id === voucherId);
       if (!item) return;
