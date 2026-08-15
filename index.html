@@ -77,10 +77,18 @@
       opacity: 0;
       pointer-events: auto;
     }
+
+    .role-btn-active {
+      background-color: #00ff66 !important;
+      color: #000000 !important;
+      font-weight: bold;
+      box-shadow: 0 0 10px rgba(0, 255, 102, 0.5);
+    }
   </style>
 </head>
 <body class="bg-black text-slate-200 min-h-screen font-sans antialiased">
 
+  <!-- Header Banner -->
   <header class="bg-zinc-950/90 backdrop-blur text-white border-b border-zinc-800 shadow-lg sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
       <div class="flex items-center gap-3 text-center md:text-left">
@@ -96,13 +104,25 @@
     </div>
   </header>
 
+  <!-- Main Container -->
   <main class="max-w-7xl mx-auto px-4 py-6">
 
+    <!-- Auth Card -->
     <div id="authContainer" class="max-w-md mx-auto bg-zinc-900/90 backdrop-blur rounded-xl shadow-neon border border-zinc-800 p-6 my-10">
-      <div class="text-center mb-6">
+      <div class="text-center mb-5">
         <img id="authLogoImg" src="" alt="Logo" class="w-16 h-16 rounded-full border border-neon p-0.5 mx-auto mb-3 shadow-neon object-contain hidden">
         <h2 id="authTitle" class="text-lg font-bold text-white">Sign In to Account</h2>
-        <p id="authSubTitle" class="text-xs text-zinc-400 mt-1">Admin approval is required for login access</p>
+        <p id="authSubTitle" class="text-xs text-zinc-400 mt-1">Select your access portal</p>
+      </div>
+
+      <!-- Role Selector Tabs -->
+      <div class="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800 mb-5">
+        <button type="button" id="roleStaffBtn" onclick="selectLoginRole('staff')" class="py-2 text-xs font-bold rounded-md transition text-zinc-400 role-btn-active">
+          <i class="fa-solid fa-user-gear mr-1"></i> Staff Portal
+        </button>
+        <button type="button" id="roleAdminBtn" onclick="selectLoginRole('admin')" class="py-2 text-xs font-bold rounded-md transition text-zinc-400">
+          <i class="fa-solid fa-user-shield mr-1"></i> Admin Portal
+        </button>
       </div>
 
       <form id="authForm" onsubmit="handleAuth(event)" class="space-y-4">
@@ -125,7 +145,7 @@
         </div>
 
         <button type="submit" id="authSubmitBtn" class="w-full bg-neon text-black font-bold py-2.5 rounded-lg text-sm transition hover-bg-neon shadow-neon">
-          Sign In
+          Sign In as Staff
         </button>
       </form>
 
@@ -136,6 +156,7 @@
       </div>
     </div>
 
+    <!-- Pending Approval Banner -->
     <div id="pendingContainer" class="hidden max-w-md mx-auto bg-zinc-900 border border-amber-500/30 rounded-xl p-6 text-center my-10 shadow-sm">
       <img id="pendingLogoImg" src="" alt="Logo" class="w-12 h-12 rounded-full border border-amber-500/30 mx-auto mb-3 object-contain hidden">
       <h2 class="text-base font-bold text-amber-400">Account Pending Approval</h2>
@@ -147,8 +168,10 @@
       </button>
     </div>
 
+    <!-- Dashboard Main Area -->
     <div id="appDashboard" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-6">
 
+      <!-- Left Column: New Voucher Entry Form -->
       <div class="lg:col-span-4 bg-zinc-900/90 backdrop-blur rounded-xl shadow-lg border border-zinc-800 p-5 h-fit">
         <div class="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
           <h2 class="font-bold text-white text-sm flex items-center gap-2">
@@ -210,6 +233,7 @@
         </form>
       </div>
 
+      <!-- Right Column: Expense Logs Table -->
       <div class="lg:col-span-8 bg-zinc-900/90 backdrop-blur rounded-xl shadow-lg border border-zinc-800 p-5">
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-3 border-b border-zinc-800">
           <div>
@@ -299,6 +323,7 @@
     const _supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
     let authState = 'login';
+    let loginRole = 'staff'; 
     let currentUser = null;
     let userProfile = null;
     let expenses = [];
@@ -316,6 +341,25 @@
     yearPicker.innerHTML = `<option value="ALL">All Years</option>`;
     for (let y = currentYear; y >= currentYear - 5; y--) {
       yearPicker.innerHTML += `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`;
+    }
+
+    function selectLoginRole(role) {
+      loginRole = role;
+      const staffBtn = document.getElementById('roleStaffBtn');
+      const adminBtn = document.getElementById('roleAdminBtn');
+      const submitBtn = document.getElementById('authSubmitBtn');
+
+      if (role === 'admin') {
+        adminBtn.classList.add('role-btn-active');
+        staffBtn.classList.remove('role-btn-active');
+        submitBtn.innerText = 'Sign In as Admin';
+        submitBtn.className = "w-full bg-amber-500 text-black font-bold py-2.5 rounded-lg text-sm transition hover:bg-amber-400 shadow-lg";
+      } else {
+        staffBtn.classList.add('role-btn-active');
+        adminBtn.classList.remove('role-btn-active');
+        submitBtn.innerText = 'Sign In as Staff';
+        submitBtn.className = "w-full bg-neon text-black font-bold py-2.5 rounded-lg text-sm transition hover-bg-neon shadow-neon";
+      }
     }
 
     function openPicker(id) {
@@ -393,7 +437,7 @@
     async function handleUserSession(user) {
       currentUser = user;
       const { data } = await _supabase.from('profiles').select('*').eq('id', user.id).single();
-      userProfile = data || { email: user.email, full_name: user.email, is_approved: false };
+      userProfile = data || { email: user.email, full_name: user.email, is_approved: false, role: 'staff' };
 
       if (userProfile && userProfile.is_approved) await loadExpensesFromSupabase();
       updateUI();
@@ -426,13 +470,15 @@
         authContainer.classList.add('hidden');
         pendingContainer.classList.add('hidden');
         appDashboard.classList.remove('hidden');
+
+        const isAdmin = userProfile?.role === 'admin';
         userStatusArea.innerHTML = `
           <div class="flex items-center gap-2">
-            <span class="text-xs bg-zinc-900 border border-zinc-700 text-white px-2.5 py-1 rounded font-medium">
-              <i class="fa-solid fa-user-check text-neon mr-1"></i> ${userProfile?.full_name || currentUser.email}
+            <span class="text-xs ${isAdmin ? 'bg-amber-950 text-amber-400 border-amber-700' : 'bg-zinc-900 text-white border-zinc-700'} border px-2.5 py-1 rounded font-medium">
+              <i class="fa-solid ${isAdmin ? 'fa-shield-halved text-amber-400' : 'fa-user-check text-neon'} mr-1"></i> ${userProfile?.full_name || currentUser.email} ${isAdmin ? '(Admin)' : ''}
             </span>
-            <button onclick="logout()" class="text-xs bg-red-950/80 border border-red-800 hover:bg-red-900 text-red-300 px-2.5 py-1 rounded transition">
-              <i class="fa-solid fa-right-from-bracket"></i>
+            <button onclick="logout()" class="text-xs bg-red-950/80 border border-red-800 hover:bg-red-900 text-red-300 px-2.5 py-1 rounded transition flex items-center gap-1 font-bold">
+              <i class="fa-solid fa-right-from-bracket"></i> Logout
             </button>
           </div>
         `;
@@ -452,11 +498,11 @@
 
       if (mode === 'login') {
         title.innerText = 'Sign In to Account';
-        subtitle.innerText = 'Admin approval is required for login access';
+        subtitle.innerText = 'Select your access portal';
         nameGrp.classList.add('hidden');
         passGrp.classList.remove('hidden');
         document.getElementById('authPassword').required = true;
-        submitBtn.innerText = 'Sign In';
+        submitBtn.innerText = loginRole === 'admin' ? 'Sign In as Admin' : 'Sign In as Staff';
         toggleBtn.innerText = "Don't have an account? Register";
       } else if (mode === 'register') {
         title.innerText = 'Create Staff Account';
@@ -505,20 +551,90 @@
         else { alert("Registration successful! Waiting for admin approval."); if(data.user) await handleUserSession(data.user); }
       } else {
         const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
-        if (error) alert("Error: " + error.message);
-        else await handleUserSession(data.user);
+        if (error) {
+          alert("Login Failed: " + error.message);
+          return;
+        }
+
+        const { data: profile } = await _supabase.from('profiles').select('*').eq('id', data.user.id).single();
+        if (loginRole === 'admin' && profile?.role !== 'admin') {
+          alert("Access Denied! You do not have Administrator permissions.");
+          await _supabase.auth.signOut();
+          return;
+        }
+
+        await handleUserSession(data.user);
       }
     }
 
+    // 100% Guaranteed Logout Function (Clears storage, session, and forces reload)
     async function logout() {
-      if (_supabase) await _supabase.signOut();
-      currentUser = null; userProfile = null; expenses = []; updateUI();
+      try {
+        if (_supabase) await _supabase.auth.signOut();
+      } catch (err) {
+        console.error("Signout error:", err);
+      } finally {
+        currentUser = null;
+        userProfile = null;
+        expenses = [];
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.reload();
+      }
     }
 
     function updateNextVoucherBadge() {
       const year = new Date().getFullYear();
       const count = expenses.length + 1;
       document.getElementById('nextVoucherIdBadge').innerText = `DCCDM-${year}-${String(count).padStart(4, '0')}`;
+    }
+
+    // Auto-Stamp Voucher ID on Uploaded Image File
+    async function stampVoucherIdOnImage(file, voucherId) {
+      return new Promise((resolve) => {
+        if (!file.type.startsWith('image/')) {
+          resolve(file); 
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(img, 0, 0);
+
+            const text = `DCCDM OFFICIAL | VOUCHER: ${voucherId}`;
+            ctx.font = 'bold ' + Math.max(16, Math.floor(img.width * 0.025)) + 'px sans-serif';
+            const textWidth = ctx.measureText(text).width;
+            const padding = 12;
+            const rectX = canvas.width - textWidth - (padding * 2) - 20;
+            const rectY = 20;
+            const rectWidth = textWidth + (padding * 2);
+            const rectHeight = Math.max(28, Math.floor(img.width * 0.04));
+
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.85)';
+            ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
+            ctx.strokeStyle = '#00ff66';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
+
+            ctx.fillStyle = '#00ff66';
+            ctx.fillText(text, rectX + padding, rectY + rectHeight - (padding / 2) - 2);
+
+            canvas.toBlob((blob) => {
+              const stampedFile = new File([blob], `stamped_${file.name}`, { type: 'image/jpeg' });
+              resolve(stampedFile);
+            }, 'image/jpeg', 0.92);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
     }
 
     async function saveExpense(e) {
@@ -538,11 +654,12 @@
       const random4Digit = Math.floor(1000 + Math.random() * 9000);
       const voucher_id = `DCCDM-${year}-${random4Digit}`;
 
-      // Upload Manual Voucher file safely to Supabase Storage
       if (fileInput.files.length > 0 && _supabase) {
         try {
           let file = fileInput.files[0];
-          // Safe Filename with clean characters
+          // Auto-stamp Voucher ID on receipt image before uploading
+          file = await stampVoucherIdOnImage(file, voucher_id);
+
           const cleanName = file.name.replace(/[^a-zA-Z0-9.]/g, "_");
           const fileName = `${Date.now()}_${voucher_id}_${cleanName}`;
           
@@ -581,8 +698,14 @@
       updateNextVoucherBadge();
     }
 
+    // Delete Voucher Function: Accessible ONLY for Admins
     async function deleteExpense(id, voucherId) {
-      if (!confirm(`Are you sure you want to delete Voucher ${voucherId}? This action cannot be undone.`)) return;
+      if (userProfile?.role !== 'admin') {
+        alert("Permission Denied! Only Administrators can delete vouchers.");
+        return;
+      }
+
+      if (!confirm(`ADMIN ACTION: Are you sure you want to permanently delete Voucher ${voucherId}?`)) return;
 
       if (_supabase) {
         const { error } = await _supabase.from('expenses').delete().eq('id', id);
@@ -592,7 +715,7 @@
         }
       }
 
-      alert(`Voucher ${voucherId} deleted successfully.`);
+      alert(`Voucher ${voucherId} deleted successfully by Admin.`);
       await loadExpensesFromSupabase();
       renderTable();
       updateNextVoucherBadge();
@@ -607,6 +730,8 @@
 
       tbody.innerHTML = '';
       let total = 0;
+
+      const isAdmin = userProfile?.role === 'admin';
 
       const filtered = expenses.filter(item => {
         const matchesSearch = (item.voucher_id || '').toLowerCase().includes(search) ||
@@ -647,13 +772,14 @@
                   <i class="fa-solid fa-print"></i>
                 </button>
                 ${item.attachment_url ? `
-                  <a href="${item.attachment_url}" target="_blank" download="Voucher_${item.voucher_id}" title="View / Download Manual Uploaded File" class="p-1.5 bg-zinc-800 text-neon rounded hover:bg-zinc-700 transition border border-neon/30">
+                  <a href="${item.attachment_url}" target="_blank" download="Voucher_${item.voucher_id}" title="View / Download Stamped Manual Voucher" class="p-1.5 bg-zinc-800 text-neon rounded hover:bg-zinc-700 transition border border-neon/30">
                     <i class="fa-solid fa-file-arrow-down"></i>
                   </a>` : ''
                 }
-                <button onclick="deleteExpense(${item.id}, '${item.voucher_id}')" title="Delete Voucher" class="p-1.5 bg-red-950/80 text-red-400 hover:bg-red-900 border border-red-800 rounded transition">
+                ${isAdmin ? `
+                <button onclick="deleteExpense(${item.id}, '${item.voucher_id}')" title="Delete Voucher (Admin Only)" class="p-1.5 bg-red-950/80 text-red-400 hover:bg-red-900 border border-red-800 rounded transition">
                   <i class="fa-solid fa-trash-can"></i>
-                </button>
+                </button>` : ''}
               </div>
             </td>
           `;
@@ -664,6 +790,7 @@
       document.getElementById('totalAmountCell').innerText = '₹ ' + total.toFixed(2);
     }
 
+    // Export Single Voucher: Only Authorized Approval (Receiver Signature Removed)
     function exportSinglePDF(voucherId) {
       const item = expenses.find(e => e.voucher_id === voucherId);
       if (!item) return;
@@ -724,6 +851,7 @@
       doc.setTextColor(31, 41, 55);
       doc.text(`Verified & System Entered By: ${entryUser} (${entryEmail})`, 19, finalY + 11);
 
+      // Single Line Signature: Only Authorized Approval
       const sigY = finalY + 35;
       doc.setDrawColor(156, 163, 175);
       doc.line(135, sigY, 195, sigY);
