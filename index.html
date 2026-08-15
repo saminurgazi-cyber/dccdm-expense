@@ -13,7 +13,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- PDF Modification Library for Auto-Stamping on Uploaded PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -118,7 +117,7 @@
       </div>
 
       <!-- Role Selector Tabs -->
-      <div class="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800 mb-5">
+      <div id="roleTabsContainer" class="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800 mb-5">
         <button type="button" id="roleStaffBtn" onclick="selectLoginRole('staff')" class="py-2 text-xs font-bold rounded-md transition text-zinc-400 role-btn-active">
           <i class="fa-solid fa-user-gear mr-1"></i> Staff Portal
         </button>
@@ -133,14 +132,14 @@
           <input type="text" id="authName" placeholder="Enter full name" class="w-full text-sm px-3 py-2 bg-zinc-950 border border-zinc-700 text-white rounded-lg focus-neon">
         </div>
         
-        <div>
+        <div id="emailGroup">
           <label class="block text-xs font-semibold text-zinc-300 mb-1">Email Address</label>
-          <input type="email" id="authEmail" required placeholder="user@dccdm.org" class="w-full text-sm px-3 py-2 bg-zinc-950 border border-zinc-700 text-white rounded-lg focus-neon">
+          <input type="email" id="authEmail" placeholder="user@dccdm.org" class="w-full text-sm px-3 py-2 bg-zinc-950 border border-zinc-700 text-white rounded-lg focus-neon">
         </div>
         
         <div id="passwordGroup">
           <div class="flex justify-between items-center mb-1">
-            <label class="block text-xs font-semibold text-zinc-300">Password</label>
+            <label class="block text-xs font-semibold text-zinc-300" id="passLabel">Password</label>
             <button type="button" onclick="switchAuthMode('forgot')" id="forgotLink" class="text-[11px] text-neon hover:underline">Forgot Password?</button>
           </div>
           <input type="password" id="authPassword" placeholder="••••••••" class="w-full text-sm px-3 py-2 bg-zinc-950 border border-zinc-700 text-white rounded-lg focus-neon">
@@ -151,7 +150,7 @@
         </button>
       </form>
 
-      <div class="mt-4 pt-4 border-t border-zinc-800 text-center">
+      <div class="mt-4 pt-4 border-t border-zinc-800 text-center" id="authFooter">
         <button onclick="toggleAuthMode()" id="toggleAuthBtn" class="text-xs text-neon hover:underline font-medium">
           Don't have an account? Register
         </button>
@@ -345,7 +344,6 @@
       yearPicker.innerHTML += `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`;
     }
 
-    // Precise Sequential Voucher ID Calculator
     function calculateNextVoucherId() {
       const year = new Date().getFullYear();
       let maxSerial = 0;
@@ -450,13 +448,27 @@
     window.addEventListener('DOMContentLoaded', async () => {
       loadLogo();
       if (_supabase) {
+        // Detect if coming from a password recovery link
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        if (hashParams.get('type') === 'recovery') {
+          switchAuthMode('update_password');
+          return;
+        }
+
         const { data: { session } } = await _supabase.auth.getSession();
         if (session) await handleUserSession(session.user);
         else updateUI();
 
         _supabase.auth.onAuthStateChange(async (event, session) => {
-          if (session) await handleUserSession(session.user);
-          else { currentUser = null; userProfile = null; expenses = []; updateUI(); }
+          if (event === 'PASSWORD_RECOVERY') {
+            switchAuthMode('update_password');
+          } else if (session) {
+            if (authState !== 'update_password') {
+              await handleUserSession(session.user);
+            }
+          } else {
+            currentUser = null; userProfile = null; expenses = []; updateUI();
+          }
         });
       } else {
         updateUI();
@@ -521,34 +533,68 @@
       const title = document.getElementById('authTitle');
       const subtitle = document.getElementById('authSubTitle');
       const nameGrp = document.getElementById('nameGroup');
+      const emailGrp = document.getElementById('emailGroup');
       const passGrp = document.getElementById('passwordGroup');
+      const passLabel = document.getElementById('passLabel');
+      const forgotLink = document.getElementById('forgotLink');
       const submitBtn = document.getElementById('authSubmitBtn');
       const toggleBtn = document.getElementById('toggleAuthBtn');
+      const roleTabs = document.getElementById('roleTabsContainer');
+      const authFooter = document.getElementById('authFooter');
 
       if (mode === 'login') {
         title.innerText = 'Sign In to Account';
         subtitle.innerText = 'Select your access portal';
+        roleTabs.classList.remove('hidden');
+        authFooter.classList.remove('hidden');
         nameGrp.classList.add('hidden');
+        emailGrp.classList.remove('hidden');
         passGrp.classList.remove('hidden');
+        forgotLink.classList.remove('hidden');
+        passLabel.innerText = "Password";
+        document.getElementById('authEmail').required = true;
         document.getElementById('authPassword').required = true;
         submitBtn.innerText = loginRole === 'admin' ? 'Sign In as Admin' : 'Sign In as Staff';
         toggleBtn.innerText = "Don't have an account? Register";
       } else if (mode === 'register') {
         title.innerText = 'Create Staff Account';
         subtitle.innerText = 'Fill details to request new staff account';
+        roleTabs.classList.remove('hidden');
+        authFooter.classList.remove('hidden');
         nameGrp.classList.remove('hidden');
+        emailGrp.classList.remove('hidden');
         passGrp.classList.remove('hidden');
+        forgotLink.classList.add('hidden');
+        passLabel.innerText = "Password";
+        document.getElementById('authEmail').required = true;
         document.getElementById('authPassword').required = true;
         submitBtn.innerText = 'Register Account';
         toggleBtn.innerText = 'Already have an account? Login';
       } else if (mode === 'forgot') {
         title.innerText = 'Reset Password';
         subtitle.innerText = 'Enter email to receive password reset link';
+        roleTabs.classList.add('hidden');
+        authFooter.classList.remove('hidden');
         nameGrp.classList.add('hidden');
+        emailGrp.classList.remove('hidden');
         passGrp.classList.add('hidden');
+        document.getElementById('authEmail').required = true;
         document.getElementById('authPassword').required = false;
         submitBtn.innerText = 'Send Reset Link';
         toggleBtn.innerText = 'Back to Login';
+      } else if (mode === 'update_password') {
+        title.innerText = 'Set New Password';
+        subtitle.innerText = 'Enter your new secure password below';
+        roleTabs.classList.add('hidden');
+        authFooter.classList.add('hidden');
+        nameGrp.classList.add('hidden');
+        emailGrp.classList.add('hidden');
+        passGrp.classList.remove('hidden');
+        forgotLink.classList.add('hidden');
+        passLabel.innerText = "New Password";
+        document.getElementById('authEmail').required = false;
+        document.getElementById('authPassword').required = true;
+        submitBtn.innerText = 'Update Password & Login';
       }
     }
 
@@ -566,13 +612,26 @@
       if (!_supabase) return alert("Supabase configuration missing.");
       
       if (authState === 'forgot') {
+        // Correct Dynamic Current Website Redirect URL
+        const redirectUrl = window.location.origin + window.location.pathname;
         const { error } = await _supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.href
+          redirectTo: redirectUrl
         });
         if (error) alert("Error: " + error.message);
         else {
           alert("Password reset email sent! Check your inbox.");
           switchAuthMode('login');
+        }
+      } else if (authState === 'update_password') {
+        const { error } = await _supabase.auth.updateUser({ password });
+        if (error) {
+          alert("Password update failed: " + error.message);
+        } else {
+          alert("Password updated successfully! Logging you in...");
+          window.location.hash = '';
+          const { data: { user } } = await _supabase.auth.getUser();
+          if (user) await handleUserSession(user);
+          else location.reload();
         }
       } else if (authState === 'register') {
         const { data, error } = await _supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
@@ -723,7 +782,7 @@
               width: boxWidth,
               height: boxHeight,
               color: rgb(0, 0, 0),
-              borderColor: rgb(0, 1, 0.4), // Neon green border
+              borderColor: rgb(0, 1, 0.4),
               borderWidth: 1.5,
               opacity: 0.95,
             });
@@ -742,7 +801,7 @@
               y: boxY + boxHeight - padding - subFontSize - fontSize - 2,
               size: fontSize,
               font: fontBold,
-              color: rgb(0, 1, 0.4), // Neon green
+              color: rgb(0, 1, 0.4),
             });
 
             firstPage.drawText(line3, {
@@ -750,7 +809,7 @@
               y: boxY + padding + 2,
               size: subFontSize,
               font: fontBold,
-              color: rgb(1, 0.85, 0.2), // Yellow/Amber
+              color: rgb(1, 0.85, 0.2),
             });
           }
 
@@ -779,14 +838,11 @@
       saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing & Saving...';
       saveBtn.disabled = true;
 
-      // 1. Calculate Single Exact Matching Voucher ID
       const voucher_id = calculateNextVoucherId();
 
-      // 2. Upload and Stamp File (Handles BOTH Images & PDFs)
       if (fileInput.files.length > 0 && _supabase) {
         try {
           let file = fileInput.files[0];
-          // Auto-stamp exact Voucher ID on the bill (Image or PDF)
           file = await stampVoucherIdOnFile(file, voucher_id, expense_date);
 
           const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -802,7 +858,6 @@
         }
       }
 
-      // 3. Insert Record with Exact Same Voucher ID
       if (_supabase && currentUser) {
         const { error } = await _supabase.from('expenses').insert([{
           voucher_id,
